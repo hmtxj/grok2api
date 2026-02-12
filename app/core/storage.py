@@ -732,40 +732,35 @@ class SQLStorage(BaseStorage):
             return None
 
     async def save_tokens(self, data: Dict[str, Any]):
+        """差量更新 Token：只删除被移除的、只写入有变化的"""
         await self._ensure_schema()
         from sqlalchemy import text
         import time as _time
 
         try:
             async with self.async_session() as session:
-                # 收集新数据中的所有 token 键
-                new_token_keys = set()
-                params = []
+                # 构建新数据映射：token -> (pool_name, data_json)
+                new_map = {}
                 for pool_name, tokens in data.items():
                     for t in tokens:
                         tk = t.get("token")
                         if not tk:
                             continue
-                        new_token_keys.add(tk)
-                        params.append(
-                            {
-                                "token": tk,
-                                "pool_name": pool_name,
-                                "data": json_dumps(t),
-                                "updated_at": int(_time.time()),
-                            }
-                        )
+                        new_map[tk] = (pool_name, json_dumps(t))
 
-                # 查询数据库中已有的 token 键
+                # 查询数据库中已有的全部记录
                 existing_res = await session.execute(
-                    text("SELECT token FROM tokens")
+                    text("SELECT token, pool_name, data FROM tokens")
                 )
-                existing_keys = {row[0] for row in existing_res.fetchall()}
+                existing_map = {
+                    row[0]: (row[1], row[2]) for row in existing_res.fetchall()
+                }
 
-                # 差量删除：只删除不在新数据中的 token
-                to_delete = existing_keys - new_token_keys
+                now = int(_time.time())
+
+                # 1) 差量删除：只删除不在新数据中的 token
+                to_delete = set(existing_map.keys()) - set(new_map.keys())
                 if to_delete:
-                    # 分批删除，避免参数过多
                     delete_list = list(to_delete)
                     for i in range(0, len(delete_list), 100):
                         batch = delete_list[i:i+100]
@@ -776,8 +771,21 @@ class SQLStorage(BaseStorage):
                             delete_params,
                         )
 
-                # UPSERT：存在则更新，不存在则插入
-                if params:
+                # 2) 差量写入：只处理新增或有变化的 token
+                upsert_params = []
+                for tk, (pool_name, data_json) in new_map.items():
+                    existing = existing_map.get(tk)
+                    # 跳过完全相同的记录（pool_name 和 data 都没变）
+                    if existing and existing[0] == pool_name and existing[1] == data_json:
+                        continue
+                    upsert_params.append({
+                        "token": tk,
+                        "pool_name": pool_name,
+                        "data": data_json,
+                        "updated_at": now,
+                    })
+
+                if upsert_params:
                     if self.dialect in ("postgres", "postgresql", "pgsql"):
                         upsert_sql = text(
                             "INSERT INTO tokens (token, pool_name, data, updated_at) "
@@ -788,7 +796,6 @@ class SQLStorage(BaseStorage):
                             "updated_at = EXCLUDED.updated_at"
                         )
                     else:
-                        # MySQL / MariaDB
                         upsert_sql = text(
                             "INSERT INTO tokens (token, pool_name, data, updated_at) "
                             "VALUES (:token, :pool_name, :data, :updated_at) "
@@ -797,12 +804,16 @@ class SQLStorage(BaseStorage):
                             "data = VALUES(data), "
                             "updated_at = VALUES(updated_at)"
                         )
-                    # 分批写入，避免单事务过大
-                    for i in range(0, len(params), 200):
-                        batch = params[i:i+200]
+                    for i in range(0, len(upsert_params), 200):
+                        batch = upsert_params[i:i+200]
                         await session.execute(upsert_sql, batch)
 
                 await session.commit()
+                logger.info(
+                    f"SQLStorage: Token 差量更新完成 - "
+                    f"删除 {len(to_delete)}, 写入 {len(upsert_params)}, "
+                    f"跳过 {len(new_map) - len(upsert_params)}"
+                )
         except Exception as e:
             logger.error(f"SQLStorage: 保存 Token 失败: {e}")
             raise
