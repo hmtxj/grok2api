@@ -567,27 +567,42 @@ async function submitImport() {
   const text = byId('import-text').value;
   const lines = text.split('\n');
   const defaultQuota = getDefaultQuotaForPool(pool);
+  let added = 0;
+  let skipped = 0;
 
   lines.forEach(line => {
-    const t = line.trim();
-    if (t && !flatTokens.some(ft => ft.token === t)) {
-      flatTokens.push({
-        token: t,
-        pool: pool,
-        status: 'active',
-        quota: defaultQuota,
-        note: '',
-        tags: [],
-        fail_count: 0,
-        use_count: 0,
-        _selected: false
-      });
+    let t = line.trim();
+    if (!t) return;
+    // 剥离 sso= 前缀，和后端保持一致
+    if (t.startsWith('sso=')) t = t.substring(4);
+    if (!t) return;
+    // 去重：检查是否已存在（不区分 pool）
+    if (flatTokens.some(ft => ft.token === t)) {
+      skipped++;
+      return;
     }
+    flatTokens.push({
+      token: t,
+      pool: pool,
+      status: 'active',
+      quota: defaultQuota,
+      note: '',
+      tags: [],
+      fail_count: 0,
+      use_count: 0,
+      _selected: false
+    });
+    added++;
   });
 
   await syncToServer();
   closeImportModal();
   loadData();
+  if (skipped > 0) {
+    showToast(`导入完成：新增 ${added}，跳过重复 ${skipped}`, 'info');
+  } else if (added > 0) {
+    showToast(`成功导入 ${added} 个 Token`, 'success');
+  }
 }
 
 // Export Logic
