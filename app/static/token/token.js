@@ -1122,4 +1122,28 @@ async function batchEnableNSFW() {
 
 
 
+// ========== UI 折叠功能 ==========
+let isBatchBarCollapsed = false;
+
+function toggleBatchBar() {
+  const content = byId('batch-content');
+  const icon = byId('batch-collapse-icon');
+
+  if (!content || !icon) return;
+
+  isBatchBarCollapsed = !isBatchBarCollapsed;
+
+  if (isBatchBarCollapsed) {
+    // 收起：隐藏操作内容，只留折叠按钮
+    content.style.display = 'none';
+    // 图标改为右箭头（表示点击展开）
+    icon.innerHTML = '<polyline points="9 18 15 12 9 6"></polyline>';
+  } else {
+    // 展开：显示操作内容
+    content.style.display = 'flex';
+    // 图标改为左箭头（表示点击收起）
+    icon.innerHTML = '<polyline points="15 18 9 12 15 6"></polyline>';
+  }
+}
+
 window.onload = init;

@@ -69,7 +69,6 @@
     .pagination-bar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 12px;
       padding: 8px 4px;
     }
@@ -176,10 +175,8 @@
     }
 
     #batch-actions {
-      background: rgba(255, 255, 255, 0.92);
+      background: #fff;
       border: 1px solid var(--border);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     }
 
     #batch-actions .geist-button-outline:hover {
@@ -346,6 +343,7 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+
     .hide-scrollbar::-webkit-scrollbar {
       display: none;
     }

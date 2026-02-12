@@ -91,30 +91,29 @@
 
       <!-- Tab Filter (with ARIA) -->
       <div class="flex items-center gap-4 mb-4 border-b border-[var(--border)] overflow-x-auto hide-scrollbar"
-           role="tablist" aria-label="Token 状态筛选" id="status-tabs">
-        <button class="tab-item active" role="tab" aria-selected="true"
-                data-filter="all" onclick="filterByStatus('all')">
+        role="tablist" aria-label="Token 状态筛选" id="status-tabs">
+        <button class="tab-item active" role="tab" aria-selected="true" data-filter="all"
+          onclick="filterByStatus('all')">
           全部 <span class="badge" id="tab-count-all">0</span>
         </button>
-        <button class="tab-item" role="tab" aria-selected="false"
-                data-filter="active" onclick="filterByStatus('active')">
+        <button class="tab-item" role="tab" aria-selected="false" data-filter="active"
+          onclick="filterByStatus('active')">
           正常 <span class="badge badge-green" id="tab-count-active">0</span>
         </button>
-        <button class="tab-item" role="tab" aria-selected="false"
-                data-filter="cooling" onclick="filterByStatus('cooling')">
+        <button class="tab-item" role="tab" aria-selected="false" data-filter="cooling"
+          onclick="filterByStatus('cooling')">
           限流 <span class="badge badge-orange" id="tab-count-cooling">0</span>
         </button>
-        <button class="tab-item" role="tab" aria-selected="false"
-                data-filter="expired" onclick="filterByStatus('expired')">
+        <button class="tab-item" role="tab" aria-selected="false" data-filter="expired"
+          onclick="filterByStatus('expired')">
           失效 <span class="badge badge-red" id="tab-count-expired">0</span>
         </button>
         <span class="tab-sep"></span>
-        <button class="tab-item" role="tab" aria-selected="false"
-                data-filter="nsfw" onclick="filterByStatus('nsfw')">
+        <button class="tab-item" role="tab" aria-selected="false" data-filter="nsfw" onclick="filterByStatus('nsfw')">
           已开 NSFW <span class="badge badge-purple" id="tab-count-nsfw">0</span>
         </button>
-        <button class="tab-item" role="tab" aria-selected="false"
-                data-filter="no-nsfw" onclick="filterByStatus('no-nsfw')">
+        <button class="tab-item" role="tab" aria-selected="false" data-filter="no-nsfw"
+          onclick="filterByStatus('no-nsfw')">
           未开 NSFW <span class="badge badge-gray" id="tab-count-no-nsfw">0</span>
         </button>
       </div>
@@ -146,7 +145,48 @@
       <!-- Pagination -->
       <div class="pagination-bar">
         <div id="pagination-info" class="text-xs text-[var(--accents-5)]">第 0 / 0 页 · 共 0 条</div>
-        <div class="flex items-center gap-2">
+
+        <!-- 批量操作栏（嵌入分页栏同一行） -->
+        <div id="batch-actions"
+          class="flex items-center gap-1 h-8 border border-gray-200 rounded-md px-1 bg-white transition-all duration-200">
+          <div id="batch-content" class="flex items-center gap-1 overflow-hidden transition-all duration-200">
+            <div class="text-xs font-medium flex items-center gap-1.5 text-gray-500 whitespace-nowrap pl-1">
+              <span>已选</span>
+              <span
+                class="bg-black text-white text-[10px] px-1 h-4 flex items-center justify-center rounded font-bold min-w-[16px]"
+                id="selected-count">0</span>
+            </div>
+            <div class="flex items-center gap-0.5">
+              <button id="btn-batch-export" onclick="batchExport()"
+                class="text-xs px-2 h-[22px] border-0 hover:bg-gray-100 rounded-sm transition-colors text-gray-600 whitespace-nowrap flex items-center">导出</button>
+              <button id="btn-batch-update" onclick="batchUpdate()"
+                class="text-xs px-2 h-[22px] border-0 hover:bg-gray-100 rounded-sm transition-colors text-gray-600 whitespace-nowrap flex items-center">刷新</button>
+              <button id="btn-batch-nsfw" onclick="batchEnableNSFW()"
+                class="text-xs px-2 h-[22px] border-0 hover:bg-gray-100 rounded-sm transition-colors text-gray-600 whitespace-nowrap flex items-center"
+                disabled>NSFW</button>
+              <button id="btn-batch-delete" onclick="batchDelete()"
+                class="geist-button-danger text-xs px-2 h-[22px] rounded-sm whitespace-nowrap flex items-center">删除</button>
+            </div>
+            <div id="batch-progress" class="hidden text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap">
+              <span id="batch-progress-text"></span>
+              <button id="btn-pause-action" type="button" class="text-blue-500 hover:text-blue-600 text-xs font-medium"
+                onclick="toggleBatchPause()">暂停</button>
+              <button id="btn-stop-action" type="button" class="text-red-500 hover:text-red-600 text-xs font-medium"
+                onclick="stopBatchRefresh()">终止</button>
+            </div>
+          </div>
+          <!-- 折叠按钮 -->
+          <button onclick="toggleBatchBar()"
+            class="geist-button-outline w-[22px] h-[22px] flex items-center justify-center text-gray-400 hover:text-black border-0 rounded-sm transition-all shrink-0 p-0"
+            title="折叠/展开">
+            <svg id="batch-collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 ml-auto">
           <button class="geist-button-outline text-xs px-3" onclick="selectVisibleAll()">全选本页</button>
           <button class="geist-button-outline text-xs px-3" onclick="selectAllFiltered()">全选全部</button>
           <button class="geist-button-outline text-xs px-3" onclick="clearAllSelection()">取消全选</button>
@@ -161,45 +201,9 @@
         </div>
       </div>
 
-      <!-- Batch Actions Bar (Floating Bottom) -->
-
     </div>
   </main>
   <div id="app-footer"></div>
-
-  <!-- Batch Actions Bar (Floating Bottom) -->
-  <div id="batch-actions"
-    class="fixed bottom-8 left-1/2 -translate-x-1/2 z-20 bg-white border border-[var(--border)] rounded-full px-3 py-2 flex items-center shadow-lg gap-3 cursor-move select-none active:cursor-grabbing whitespace-nowrap">
-    <div class="text-sm font-medium flex items-center gap-2">
-      <span class="text-[var(--accents-5)] text-xs">已选择</span>
-      <span class="bg-black text-white text-xs px-1.5 py-0.5 rounded-full" id="selected-count">0</span>
-      <span class="text-[var(--accents-5)] text-xs">项</span>
-    </div>
-    <span class="toolbar-sep"></span>
-    <div class="flex items-center gap-1">
-      <button id="btn-batch-export" onclick="batchExport()"
-        class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100">
-        导出
-      </button>
-      <button id="btn-batch-update" onclick="batchUpdate()"
-        class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100 justify-center">
-        刷新
-      </button>
-      <button id="btn-batch-nsfw" onclick="batchEnableNSFW()"
-        class="geist-button-outline text-xs px-3 gap-1 border-0 hover:bg-gray-100 justify-center" disabled>
-        NSFW
-      </button>
-      <button id="btn-batch-delete" onclick="batchDelete()" class="geist-button-danger text-xs px-3">
-        删除
-      </button>
-    </div>
-    <div id="batch-progress" class="hidden text-xs text-[var(--accents-5)] flex items-center gap-2">
-      <span class="toolbar-sep"></span>
-      <span id="batch-progress-text"></span>
-      <button id="btn-pause-action" type="button" class="batch-link hidden" onclick="toggleBatchPause()">暂停</button>
-      <button id="btn-stop-action" type="button" class="batch-link hidden" onclick="stopBatchRefresh()">终止</button>
-    </div>
-  </div>
 
 
   <!-- Import Modal -->
@@ -224,8 +228,7 @@
         </div>
         <div>
           <label class="modal-label mb-1 block">Token 列表 (每行一个)</label>
-          <textarea id="import-text" class="geist-input font-mono h-48"
-            placeholder="粘贴 Token，一行一个..."></textarea>
+          <textarea id="import-text" class="geist-input font-mono h-48" placeholder="粘贴 Token，一行一个..."></textarea>
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <button onclick="closeImportModal()" class="geist-button-outline text-xs px-3">取消</button>
@@ -252,8 +255,7 @@
         <input type="hidden" id="edit-original-pool">
         <div>
           <label class="modal-label mb-1 block">Token</label>
-          <input type="text" id="edit-token-display" class="geist-input font-mono bg-gray-50 text-gray-500"
-            disabled>
+          <input type="text" id="edit-token-display" class="geist-input font-mono bg-gray-50 text-gray-500" disabled>
         </div>
         <div>
           <label class="modal-label mb-1 block">类型</label>

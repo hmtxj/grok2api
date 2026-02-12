@@ -11,7 +11,7 @@ base_proxy_url = ""
 asset_proxy_url = ""
 
 [security]
-cf_clearance = ""
+cf_clearance = "8woWxrp52Ivd6riSx88TDJbX_1haRYLasS1uJEvMX.Y-1770897396-1.2.1.1-ApSfuxe6x9ok2Uo3_A7qmdur6.u6BkBR91tzw3uY5pLNu09WfzC3jcxFtsx_Pcx2LcR9jZ08iRgNgEp72fqx.z0Il2fHm7CoJq7XTFr5fYQa8aS8nss.Pe11ozJMChtDoWPWrlegrMiSZVU.W04SAFuIOmher5bBKRPk180W6.L_78UX55ANuHBKzN_Xm79aYunGQadGwZEs5Lkw1q4Tty_KVh3C_S1._glBOSWOWf4"
 browser = "chrome136"
 user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 
@@ -27,13 +27,13 @@ filter_tags = ["xaiartifact","xai:tool_usage_card","grok:render"]
 max_retry = 3
 retry_status_codes = [401,429,403]
 retry_backoff_base = 0.5
-retry_backoff_factor = 2.0
-retry_backoff_max = 30.0
-retry_budget = 90.0
+retry_backoff_factor = 2
+retry_backoff_max = 30
+retry_budget = 90
 
 [timeout]
-stream_idle_timeout = 120.0
-video_idle_timeout = 90.0
+stream_idle_timeout = 120
+video_idle_timeout = 90
 
 [image]
 image_ws = true
