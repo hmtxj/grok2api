@@ -514,7 +514,7 @@ class SQLStorage(BaseStorage):
                 url,
                 echo=False,
                 poolclass=NullPool,
-                connect_args={"server_settings": {"statement_timeout": "10000"}} if "postgresql" in url or "asyncpg" in url else {},
+                connect_args={"server_settings": {"statement_timeout": "55000"}} if "postgresql" in url or "asyncpg" in url else {},
             )
         else:
             self.engine = create_async_engine(
@@ -734,31 +734,74 @@ class SQLStorage(BaseStorage):
     async def save_tokens(self, data: Dict[str, Any]):
         await self._ensure_schema()
         from sqlalchemy import text
+        import time as _time
 
         try:
             async with self.async_session() as session:
-                await session.execute(text("DELETE FROM tokens"))
-
+                # 收集新数据中的所有 token 键
+                new_token_keys = set()
                 params = []
                 for pool_name, tokens in data.items():
                     for t in tokens:
+                        tk = t.get("token")
+                        if not tk:
+                            continue
+                        new_token_keys.add(tk)
                         params.append(
                             {
-                                "token": t.get("token"),
+                                "token": tk,
                                 "pool_name": pool_name,
                                 "data": json_dumps(t),
-                                "updated_at": 0,
+                                "updated_at": int(_time.time()),
                             }
                         )
 
+                # 查询数据库中已有的 token 键
+                existing_res = await session.execute(
+                    text("SELECT token FROM tokens")
+                )
+                existing_keys = {row[0] for row in existing_res.fetchall()}
+
+                # 差量删除：只删除不在新数据中的 token
+                to_delete = existing_keys - new_token_keys
+                if to_delete:
+                    # 分批删除，避免参数过多
+                    delete_list = list(to_delete)
+                    for i in range(0, len(delete_list), 100):
+                        batch = delete_list[i:i+100]
+                        placeholders = ", ".join(f":d{j}" for j in range(len(batch)))
+                        delete_params = {f"d{j}": v for j, v in enumerate(batch)}
+                        await session.execute(
+                            text(f"DELETE FROM tokens WHERE token IN ({placeholders})"),
+                            delete_params,
+                        )
+
+                # UPSERT：存在则更新，不存在则插入
                 if params:
-                    # 批量插入
-                    await session.execute(
-                        text(
-                            "INSERT INTO tokens (token, pool_name, data, updated_at) VALUES (:token, :pool_name, :data, :updated_at)"
-                        ),
-                        params,
-                    )
+                    if self.dialect in ("postgres", "postgresql", "pgsql"):
+                        upsert_sql = text(
+                            "INSERT INTO tokens (token, pool_name, data, updated_at) "
+                            "VALUES (:token, :pool_name, :data, :updated_at) "
+                            "ON CONFLICT (token) DO UPDATE SET "
+                            "pool_name = EXCLUDED.pool_name, "
+                            "data = EXCLUDED.data, "
+                            "updated_at = EXCLUDED.updated_at"
+                        )
+                    else:
+                        # MySQL / MariaDB
+                        upsert_sql = text(
+                            "INSERT INTO tokens (token, pool_name, data, updated_at) "
+                            "VALUES (:token, :pool_name, :data, :updated_at) "
+                            "ON DUPLICATE KEY UPDATE "
+                            "pool_name = VALUES(pool_name), "
+                            "data = VALUES(data), "
+                            "updated_at = VALUES(updated_at)"
+                        )
+                    # 分批写入，避免单事务过大
+                    for i in range(0, len(params), 200):
+                        batch = params[i:i+200]
+                        await session.execute(upsert_sql, batch)
+
                 await session.commit()
         except Exception as e:
             logger.error(f"SQLStorage: 保存 Token 失败: {e}")
