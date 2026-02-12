@@ -405,11 +405,14 @@ class ChatService:
         max_token_retries = int(get_config("retry.max_retry"))
         last_error = None
 
+        # 读取 NSFW Token 优先开关
+        require_tags = ["nsfw"] if get_config("token.prefer_nsfw_token") else None
+
         for attempt in range(max_token_retries):
             # 选择 token（排除已失败的）
             token = None
             for pool_name in ModelService.pool_candidates_for_model(model):
-                token = token_mgr.get_token(pool_name, exclude=tried_tokens)
+                token = token_mgr.get_token(pool_name, exclude=tried_tokens, require_tags=require_tags)
                 if token:
                     break
 
@@ -419,7 +422,7 @@ class ChatService:
                 result = await token_mgr.refresh_cooling_tokens()
                 if result.get("recovered", 0) > 0:
                     for pool_name in ModelService.pool_candidates_for_model(model):
-                        token = token_mgr.get_token(pool_name)
+                        token = token_mgr.get_token(pool_name, require_tags=require_tags)
                         if token:
                             break
 

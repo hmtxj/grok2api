@@ -185,13 +185,14 @@ class TokenManager:
             if self._dirty:
                 self._schedule_save()
 
-    def get_token(self, pool_name: str = "ssoBasic", exclude: set = None) -> Optional[str]:
+    def get_token(self, pool_name: str = "ssoBasic", exclude: set = None, require_tags: list = None) -> Optional[str]:
         """
         获取可用 Token
 
         Args:
             pool_name: Token 池名称
             exclude: 需要排除的 token 字符串集合
+            require_tags: 要求的 tags（优先匹配，无则降级）
 
         Returns:
             Token 字符串或 None
@@ -201,7 +202,7 @@ class TokenManager:
             logger.warning(f"Pool '{pool_name}' not found")
             return None
 
-        token_info = pool.select(exclude=exclude)
+        token_info = pool.select(exclude=exclude, require_tags=require_tags)
         if not token_info:
             logger.warning(f"No available token in pool '{pool_name}'")
             return None
@@ -211,12 +212,13 @@ class TokenManager:
             return token[4:]
         return token
 
-    def get_token_info(self, pool_name: str = "ssoBasic") -> Optional["TokenInfo"]:
+    def get_token_info(self, pool_name: str = "ssoBasic", require_tags: list = None) -> Optional["TokenInfo"]:
         """
         获取可用 Token 的完整信息
 
         Args:
             pool_name: Token 池名称
+            require_tags: 要求的 tags（优先匹配，无则降级）
 
         Returns:
             TokenInfo 对象或 None
@@ -226,7 +228,7 @@ class TokenManager:
             logger.warning(f"Pool '{pool_name}' not found")
             return None
 
-        token_info = pool.select()
+        token_info = pool.select(require_tags=require_tags)
         if not token_info:
             logger.warning(f"No available token in pool '{pool_name}'")
             return None
@@ -238,6 +240,7 @@ class TokenManager:
         resolution: str = "480p",
         video_length: int = 6,
         pool_candidates: Optional[List[str]] = None,
+        require_tags: list = None,
     ) -> Optional["TokenInfo"]:
         """
         根据视频需求智能选择 Token 池
@@ -269,7 +272,7 @@ class TokenManager:
             ordered_pools = [primary_pool, fallback_pool]
 
         for idx, pool_name in enumerate(ordered_pools):
-            token_info = self.get_token_info(pool_name)
+            token_info = self.get_token_info(pool_name, require_tags=require_tags)
             if token_info:
                 if idx == 0:
                     logger.info(

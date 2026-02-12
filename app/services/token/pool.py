@@ -28,15 +28,17 @@ class TokenPool:
         """获取 Token"""
         return self._tokens.get(token_str)
 
-    def select(self, exclude: set = None) -> Optional[TokenInfo]:
+    def select(self, exclude: set = None, require_tags: list = None) -> Optional[TokenInfo]:
         """
         选择一个可用 Token
         策略:
         1. 选择 active 状态且有配额的 token
-        2. 优先选择剩余额度最多的
-        3. 如果额度相同，随机选择（避免并发冲突）
+        2. 如果指定 require_tags，优先选择拥有这些 tags 的 token
+        3. 如果带 tags 的 token 不可用，自动降级到全量可用 token
+        4. 优先选择剩余额度最多的
+        5. 如果额度相同，随机选择（避免并发冲突）
         """
-        # 选择 token
+        # 基础可用列表
         available = [
             t
             for t in self._tokens.values()
@@ -46,6 +48,16 @@ class TokenPool:
 
         if not available:
             return None
+
+        # 如果指定了 tags 过滤，优先使用匹配的 token
+        if require_tags:
+            tagged = [
+                t for t in available
+                if t.tags and all(tag in t.tags for tag in require_tags)
+            ]
+            # 有匹配的就用匹配的，否则降级到全量
+            if tagged:
+                available = tagged
 
         # 找到最大额度
         max_quota = max(t.quota for t in available)

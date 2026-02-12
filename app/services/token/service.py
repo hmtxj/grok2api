@@ -14,18 +14,19 @@ class TokenService:
     """
 
     @staticmethod
-    async def get_token(pool_name: str = "ssoBasic") -> Optional[str]:
+    async def get_token(pool_name: str = "ssoBasic", require_tags: list = None) -> Optional[str]:
         """
         获取可用 Token
 
         Args:
             pool_name: Token 池名称
+            require_tags: 要求的 tags（优先匹配，无则降级）
 
         Returns:
             Token 字符串（不含 sso= 前缀）或 None
         """
         manager = await get_token_manager()
-        return manager.get_token(pool_name)
+        return manager.get_token(pool_name, require_tags=require_tags)
 
     @staticmethod
     async def consume(token: str, effort: EffortType = EffortType.LOW) -> bool:

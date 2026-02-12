@@ -231,9 +231,12 @@ async def _get_token(model: str):
     token_mgr = await get_token_manager()
     await token_mgr.reload_if_stale()
 
+    # 读取 NSFW Token 优先开关
+    require_tags = ["nsfw"] if get_config("token.prefer_nsfw_token") else None
+
     token = None
     for pool_name in ModelService.pool_candidates_for_model(model):
-        token = token_mgr.get_token(pool_name)
+        token = token_mgr.get_token(pool_name, require_tags=require_tags)
         if token:
             break
 
