@@ -176,25 +176,31 @@ class Config:
 
             merged = _deep_merge(self._defaults, config_data)
 
+
             # 自动回填缺失配置到存储
             # 或迁移了配置后需要更新
             should_persist = (
                 (not from_remote) or (merged != config_data) or deprecated_sections
             )
             if should_persist:
-                async with storage.acquire_lock("config_save", timeout=10):
-                    await storage.save_config(merged)
-                if not from_remote:
-                    logger.info(
-                        f"Initialized remote storage ({storage.__class__.__name__}) with config baseline."
-                    )
-                if deprecated_sections:
-                    logger.info("Configuration automatically migrated and cleaned.")
+                try:
+                    async with storage.acquire_lock("config_save", timeout=10):
+                        await storage.save_config(merged)
+                    if not from_remote:
+                        logger.info(
+                            f"Initialized remote storage ({storage.__class__.__name__}) with config baseline."
+                        )
+                    if deprecated_sections:
+                        logger.info("Configuration automatically migrated and cleaned.")
+                except Exception as e:
+                    logger.warning(f"Failed to persist config updates (non-critical): {e}")
 
             self._config = merged
         except Exception as e:
             logger.error(f"Error loading config: {e}")
-            self._config = {}
+            # 只有在完全无法计算出配置时才重置
+            if not self._config:
+                self._config = self._defaults or {}
 
     def get(self, key: str, default: Any = None) -> Any:
         """
