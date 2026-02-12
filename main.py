@@ -55,8 +55,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"Platform: {platform.system()} {platform.release()}")
     logger.info(f"Python: {sys.version.split()[0]}")
 
-    # 4. 启动 Token 刷新调度器
-    refresh_enabled = get_config("token.auto_refresh", True)
+    # 4. 检测 Serverless 环境
+    is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+
+    # 5. 启动 Token 刷新调度器（Serverless 环境下跳过）
+    refresh_enabled = get_config("token.auto_refresh", True) and not is_serverless
+    if is_serverless:
+        logger.info("Serverless environment detected, scheduler disabled.")
     if refresh_enabled:
         basic_interval = get_config("token.refresh_interval_hours", 8)
         super_interval = get_config("token.super_refresh_interval_hours", 2)

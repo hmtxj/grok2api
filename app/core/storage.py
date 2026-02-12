@@ -506,15 +506,25 @@ class SQLStorage(BaseStorage):
 
         self.dialect = url.split(":", 1)[0].split("+", 1)[0].lower()
 
-        # 配置 robust 的连接池
-        self.engine = create_async_engine(
-            url,
-            echo=False,
-            pool_size=20,
-            max_overflow=10,
-            pool_recycle=3600,
-            pool_pre_ping=True,
-        )
+        # Serverless 环境使用 NullPool，避免连接池占用和超时
+        is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+        if is_serverless:
+            from sqlalchemy.pool import NullPool
+            self.engine = create_async_engine(
+                url,
+                echo=False,
+                poolclass=NullPool,
+                connect_args={"server_settings": {"statement_timeout": "10000"}} if "postgresql" in url or "asyncpg" in url else {},
+            )
+        else:
+            self.engine = create_async_engine(
+                url,
+                echo=False,
+                pool_size=20,
+                max_overflow=10,
+                pool_recycle=3600,
+                pool_pre_ping=True,
+            )
         self.async_session = async_sessionmaker(self.engine, expire_on_commit=False)
         self._initialized = False
 
