@@ -101,9 +101,9 @@ const LOCALE_MAP = {
   "performance": {
     "label": "并发性能",
     "media_max_concurrent": { title: "Media 并发上限", desc: "视频/媒体生成请求的并发上限。推荐 50。" },
-    "nsfw_max_concurrent": { title: "NSFW 开启并发上限", desc: "批量开启 NSFW 模式时的并发请求上限。推荐 10。" },
-    "nsfw_batch_size": { title: "NSFW 开启批量大小", desc: "批量开启 NSFW 模式的单批处理数量。推荐 50。" },
-    "nsfw_max_tokens": { title: "NSFW 开启最大数量", desc: "单次批量开启 NSFW 的 Token 数量上限，防止误操作。推荐 1000。" },
+    "nsfw_max_concurrent": { title: "NSFW 开启并发上限", desc: "批量开启 NSFW 模式时的并发请求上限。推荐 50。" },
+    "nsfw_batch_size": { title: "NSFW 开启批量大小", desc: "批量开启 NSFW 模式的单批处理数量。推荐 200。" },
+    "nsfw_max_tokens": { title: "NSFW 开启最大数量", desc: "单次批量开启 NSFW 的 Token 数量上限。默认 100000，支持大规模处理。" },
     "usage_max_concurrent": { title: "Token 刷新并发上限", desc: "批量刷新 Token 用量时的并发请求上限。推荐 25。" },
     "usage_batch_size": { title: "Token 刷新批次大小", desc: "批量刷新 Token 用量的单批处理数量。推荐 50。" },
     "usage_max_tokens": { title: "Token 刷新最大数量", desc: "单次批量刷新 Token 用量时的处理数量上限。推荐 1000。" },
@@ -273,7 +273,7 @@ function renderConfig(data) {
 
       const header = document.createElement('div');
       header.innerHTML = `<div class="config-section-title">${getSectionLabel(section)}</div>`;
-      
+
       // 添加部分说明（如果有）
       if (SECTION_DESCRIPTIONS[section]) {
         const descP = document.createElement('p');
@@ -281,7 +281,7 @@ function renderConfig(data) {
         descP.textContent = SECTION_DESCRIPTIONS[section];
         header.appendChild(descP);
       }
-      
+
       card.appendChild(header);
 
       const grid = document.createElement('div');

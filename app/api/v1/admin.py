@@ -1014,6 +1014,9 @@ async def enable_nsfw_api(data: dict):
         max_concurrent = get_config("performance.nsfw_max_concurrent")
         batch_size = get_config("performance.nsfw_batch_size")
 
+        # 初始化共享连接池
+        await nsfw_service.open()
+
         # 定义 worker
         async def _enable(token: str):
             result = await nsfw_service.enable(token)
@@ -1028,10 +1031,13 @@ async def enable_nsfw_api(data: dict):
                 "error": result.error,
             }
 
-        # 执行批量操作
-        raw_results = await run_in_batches(
-            unique_tokens, _enable, max_concurrent=max_concurrent, batch_size=batch_size
-        )
+        try:
+            # 执行批量操作
+            raw_results = await run_in_batches(
+                unique_tokens, _enable, max_concurrent=max_concurrent, batch_size=batch_size
+            )
+        finally:
+            await nsfw_service.close()
 
         # 构造返回结果（mask token）
         results = {}
@@ -1106,6 +1112,8 @@ async def enable_nsfw_api_async(data: dict):
 
     async def _run():
         try:
+            # 初始化共享连接池
+            await nsfw_service.open()
 
             async def _enable(token: str):
                 result = await nsfw_service.enable(token)
@@ -1123,14 +1131,17 @@ async def enable_nsfw_api_async(data: dict):
                 ok = bool(res.get("ok") and res.get("data", {}).get("success"))
                 task.record(ok)
 
-            raw_results = await run_in_batches(
-                unique_tokens,
-                _enable,
-                max_concurrent=max_concurrent,
-                batch_size=batch_size,
-                on_item=_on_item,
-                should_cancel=lambda: task.cancelled,
-            )
+            try:
+                raw_results = await run_in_batches(
+                    unique_tokens,
+                    _enable,
+                    max_concurrent=max_concurrent,
+                    batch_size=batch_size,
+                    on_item=_on_item,
+                    should_cancel=lambda: task.cancelled,
+                )
+            finally:
+                await nsfw_service.close()
 
             if task.cancelled:
                 task.finish_cancelled()

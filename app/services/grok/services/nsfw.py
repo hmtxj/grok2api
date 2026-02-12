@@ -4,6 +4,7 @@ NSFW (Unhinged) 模式服务
 使用 gRPC-Web 协议开启账号的 NSFW 功能。
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import Optional
 import datetime
@@ -23,6 +24,10 @@ from app.services.grok.utils.headers import build_sso_cookie
 NSFW_API = "https://grok.com/auth_mgmt.AuthManagement/UpdateUserFeatureControls"
 BIRTH_DATE_API = "https://grok.com/rest/auth/set-birth-date"
 
+# 重试配置
+MAX_RETRIES = 2
+RETRY_BASE_DELAY = 1.0
+
 
 @dataclass
 class NSFWResult:
@@ -36,11 +41,12 @@ class NSFWResult:
 
 
 class NSFWService:
-    """NSFW 模式服务"""
+    """NSFW 模式服务（支持连接池复用和自动重试）"""
 
     def __init__(self, proxy: str = None):
         self.proxy = proxy or get_config("network.base_proxy_url")
         self.timeout = float(get_config("network.timeout"))
+        self._shared_session: Optional[AsyncSession] = None
 
     def _build_proxies(self) -> Optional[dict]:
         """构建代理配置"""
@@ -99,6 +105,31 @@ class NSFWService:
         protobuf = b"\x0a\x02\x10\x01\x12" + bytes([len(inner)]) + inner
         return encode_grpc_web_payload(protobuf)
 
+    async def _create_session(self) -> AsyncSession:
+        """创建共享 Session（连接池复用）"""
+        browser = get_config("security.browser")
+        return AsyncSession(impersonate=browser)
+
+    async def open(self):
+        """初始化共享连接池（批量操作前调用）"""
+        if self._shared_session is None:
+            self._shared_session = await self._create_session()
+
+    async def close(self):
+        """关闭共享连接池（批量操作完成后调用）"""
+        if self._shared_session is not None:
+            try:
+                await self._shared_session.close()
+            except Exception:
+                pass
+            self._shared_session = None
+
+    async def _get_session(self) -> AsyncSession:
+        """获取可用的 Session：优先使用共享连接池"""
+        if self._shared_session is not None:
+            return self._shared_session
+        return await self._create_session()
+
     async def _set_birth_date(
         self, session: AsyncSession, token: str
     ) -> tuple[bool, int, Optional[str]]:
@@ -121,63 +152,107 @@ class NSFWService:
             return False, 0, str(e)[:100]
 
     async def enable(self, token: str) -> NSFWResult:
-        """为单个 token 开启 NSFW 模式"""
+        """为单个 token 开启 NSFW 模式（支持自动重试）"""
         headers = self._build_headers(token)
         payload = self._build_payload()
-        logger.debug(f"NSFW payload: len={len(payload)} hex={payload.hex()}")
+
+        # 判断是否使用共享 session
+        use_shared = self._shared_session is not None
+        session = self._shared_session if use_shared else await self._create_session()
 
         try:
-            browser = get_config("security.browser")
-            async with AsyncSession(impersonate=browser) as session:
-                # 先设置出生日期
-                ok, birth_status, birth_err = await self._set_birth_date(session, token)
-                if not ok:
-                    return NSFWResult(
-                        success=False,
-                        http_status=birth_status,
-                        error=f"Set birth date failed: {birth_err}",
+            last_error = None
+            for attempt in range(MAX_RETRIES + 1):
+                try:
+                    # 设置出生日期
+                    ok, birth_status, birth_err = await self._set_birth_date(session, token)
+                    if not ok:
+                        last_error = f"Set birth date failed: {birth_err}"
+                        # 出生日期设置失败可能是暂时性的，重试
+                        if attempt < MAX_RETRIES:
+                            delay = RETRY_BASE_DELAY * (2 ** attempt)
+                            logger.debug(
+                                f"NSFW retry {attempt + 1}/{MAX_RETRIES}: "
+                                f"birth date failed (HTTP {birth_status}), "
+                                f"retrying in {delay}s"
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                        return NSFWResult(
+                            success=False,
+                            http_status=birth_status,
+                            error=last_error,
+                        )
+
+                    # 开启 NSFW
+                    response = await session.post(
+                        NSFW_API,
+                        data=payload,
+                        headers=headers,
+                        timeout=self.timeout,
+                        proxies=self._build_proxies(),
                     )
 
-                # 开启 NSFW
-                response = await session.post(
-                    NSFW_API,
-                    data=payload,
-                    headers=headers,
-                    timeout=self.timeout,
-                    proxies=self._build_proxies(),
-                )
+                    if response.status_code != 200:
+                        last_error = f"HTTP {response.status_code}"
+                        # 429/5xx 可重试
+                        if response.status_code in (429, 500, 502, 503) and attempt < MAX_RETRIES:
+                            delay = RETRY_BASE_DELAY * (2 ** attempt)
+                            logger.debug(
+                                f"NSFW retry {attempt + 1}/{MAX_RETRIES}: "
+                                f"HTTP {response.status_code}, retrying in {delay}s"
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                        return NSFWResult(
+                            success=False,
+                            http_status=response.status_code,
+                            error=last_error,
+                        )
 
-                if response.status_code != 200:
+                    # 解析 gRPC-Web 响应
+                    _, trailers = parse_grpc_web_response(
+                        response.content, content_type=response.headers.get("content-type")
+                    )
+
+                    grpc_status = get_grpc_status(trailers)
+                    logger.debug(
+                        f"NSFW response: http={response.status_code} grpc={grpc_status.code} "
+                        f"msg={grpc_status.message} trailers={trailers}"
+                    )
+
+                    # HTTP 200 且无 grpc-status（空响应）或 grpc-status=0 都算成功
+                    success = grpc_status.code == -1 or grpc_status.ok
+
                     return NSFWResult(
-                        success=False,
+                        success=success,
                         http_status=response.status_code,
-                        error=f"HTTP {response.status_code}",
+                        grpc_status=grpc_status.code,
+                        grpc_message=grpc_status.message or None,
                     )
 
-                # 解析 gRPC-Web 响应
-                _, trailers = parse_grpc_web_response(
-                    response.content, content_type=response.headers.get("content-type")
-                )
+                except Exception as e:
+                    last_error = str(e)[:100]
+                    if attempt < MAX_RETRIES:
+                        delay = RETRY_BASE_DELAY * (2 ** attempt)
+                        logger.debug(
+                            f"NSFW retry {attempt + 1}/{MAX_RETRIES}: "
+                            f"exception: {last_error}, retrying in {delay}s"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
 
-                grpc_status = get_grpc_status(trailers)
-                logger.debug(
-                    f"NSFW response: http={response.status_code} grpc={grpc_status.code} "
-                    f"msg={grpc_status.message} trailers={trailers}"
-                )
+            # 所有重试都失败
+            logger.error(f"NSFW enable failed after {MAX_RETRIES + 1} attempts: {last_error}")
+            return NSFWResult(success=False, http_status=0, error=last_error)
 
-                # HTTP 200 且无 grpc-status（空响应）或 grpc-status=0 都算成功
-                success = grpc_status.code == -1 or grpc_status.ok
-
-                return NSFWResult(
-                    success=success,
-                    http_status=response.status_code,
-                    grpc_status=grpc_status.code,
-                    grpc_message=grpc_status.message or None,
-                )
-
-        except Exception as e:
-            logger.error(f"NSFW enable failed: {e}")
-            return NSFWResult(success=False, http_status=0, error=str(e)[:100])
+        finally:
+            # 非共享 session 需要手动关闭
+            if not use_shared:
+                try:
+                    await session.close()
+                except Exception:
+                    pass
 
 
 __all__ = ["NSFWService", "NSFWResult"]
